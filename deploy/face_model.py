@@ -71,9 +71,10 @@ class FaceModel:
     ret = self.detector.detect_face(face_img, det_type = self.args.det)
     if ret is None:
       return None
-    bbox, points = ret
+    bbox, points = ret #返回时多box和多points
     if bbox.shape[0]==0:
       return None
+    #只取第一个，骚操作
     bbox = bbox[0,0:4]
     points = points[0,:].reshape((2,5)).T
     #print(bbox)
