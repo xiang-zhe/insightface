@@ -34,9 +34,11 @@ import sklearn
 #sys.path.append(os.path.join(os.path.dirname(__file__), 'losses'))
 #import center_loss
 
+from mxboard import *
+
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 
 args = None
@@ -122,8 +124,10 @@ def parse_args():
   parser.add_argument('--rand-mirror', type=int, default=1, help='if do random mirror in training')
   parser.add_argument('--cutoff', type=int, default=0, help='cut off aug')
   parser.add_argument('--target', type=str, default='lfw,cfp_fp,agedb_30', help='verification targets')
+  parser.add_argument('--logs', default='', help='logs')
   args = parser.parse_args()
   return args
+
 
 
 def get_symbol(args, arg_params, aux_params):
@@ -271,6 +275,7 @@ def get_symbol(args, arg_params, aux_params):
   return (out, arg_params, aux_params)
 
 def train_net(args):
+    sw = SummaryWriter(logdir=args.logs, flush_secs=5)  ####LX
     ctx = []
     cvd = os.environ['CUDA_VISIBLE_DEVICES'].strip()
     if len(cvd)>0:
@@ -359,6 +364,7 @@ def train_net(args):
     else:
       _metric = LossValueMetric()
     eval_metrics = [mx.metric.create(_metric)]
+    #sw.add_scalar(tag='train_val/loss', value=eval_metric.get()[1][0], global_step=)  ####LX
 
     if args.network[0]=='r' or args.network[0]=='y':
       initializer = mx.init.Xavier(rnd_type='gaussian', factor_type="out", magnitude=2) #resnet style
@@ -368,7 +374,7 @@ def train_net(args):
       initializer = mx.init.Xavier(rnd_type='uniform', factor_type="in", magnitude=2)
     _rescale = 1.0/args.ctx_num
     opt = optimizer.SGD(learning_rate=base_lr, momentum=base_mom, wd=base_wd, rescale_grad=_rescale)
-    som = 20
+    som = 10
     _cb = mx.callback.Speedometer(args.batch_size, som)
 
     ver_list = []
@@ -388,8 +394,10 @@ def train_net(args):
       for i in xrange(len(ver_list)):
         acc1, std1, acc2, std2, xnorm, embeddings_list = verification.test(ver_list[i], model, args.batch_size, 10, None, None)
         print('[%s][%d]XNorm: %f' % (ver_name_list[i], nbatch, xnorm))
+        sw.add_scalar(tag='%s/XNorm' %ver_name_list[i], value=xnorm, global_step=nbatch)    ####LX
         #print('[%s][%d]Accuracy: %1.5f+-%1.5f' % (ver_name_list[i], nbatch, acc1, std1))
         print('[%s][%d]Accuracy-Flip: %1.5f+-%1.5f' % (ver_name_list[i], nbatch, acc2, std2))
+        sw.add_scalar(tag='%s/acc' %ver_name_list[i], value=acc2, global_step=nbatch)    ####LX
         results.append(acc2)
       return results
 
@@ -421,6 +429,10 @@ def train_net(args):
           break
 
       _cb(param)
+      #print('param:',param)
+      #print(type(param))
+      #print(param.eval_metric.get())
+      sw.add_scalar(tag='train_val/acc', value=param.eval_metric.get()[1][0], global_step=param.nbatch)  ####LX
       if mbatch%1000==0:
         print('lr-batch-epoch:',opt.lr,param.nbatch,param.epoch)
 
@@ -480,8 +492,10 @@ def main():
     #time.sleep(3600*6.5)
     global args
     args = parse_args()
+    
     train_net(args)
 
 if __name__ == '__main__':
+    
     main()
 
